@@ -1,68 +1,209 @@
-use dao_light_io::*;
-use ft_io::*;
-use gtest::{Program, RunResult, System};
-pub const MEMBERS: &[u64] = &[3, 4, 5, 6];
-pub const ZERO_ID: u64 = 0;
+use dao_light_io::{DaoAction, DaoEvent, InitDao, Vote};
+use ft_logic_io::Action;
+use ft_main_io::{FTokenAction, FTokenEvent, InitFToken};
 
-pub fn init_fungible_token(sys: &System) {
-    sys.init_logger();
-    let ft = Program::from_file(sys, "./target/fungible_token-0.1.0.wasm");
+use gstd::prelude::*;
+use gtest::{Program, System};
+pub const ADMIN: u64 = 100;
+const TOKEN_ID: u64 = 1;
+pub const DAO_ID: u64 = 2;
+pub const PERIOD_DURATION: u64 = 10000000;
+pub const VOTING_PERIOD_LENGTH: u64 = 100000000;
+pub const GRACE_PERIOD_LENGTH: u64 = 10000000;
+pub const APPLICANTS: &[u64] = &[10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
 
-    let res = ft.send(
-        MEMBERS[0],
-        InitConfig {
-            name: String::from("MyToken"),
-            symbol: String::from("MTK"),
-            decimals: 18,
-        },
+pub trait Dao {
+    fn dao(system: &System) -> Program;
+    fn deposit(&self, from: u64, amount: u128, share: u128, error: bool);
+    fn submit_funding_proposal(
+        &self,
+        from: u64,
+        proposal_id: u128,
+        applicant: u64,
+        amount: u128,
+        quorum: u128,
+        error: bool,
     );
-
-    assert!(res.log().is_empty());
-    MEMBERS.iter().for_each(|member| {
-        let res = ft.send(*member, FTAction::Mint(10000000));
-        assert!(!res.main_failed());
-    });
+    fn process_proposal(&self, proposal_id: u128, passed: bool, error: bool);
+    fn submit_vote(&self, from: u64, proposal_id: u128, vote: Vote, error: bool);
+    fn ragequit(&self, from: u64, amount: u128, funds: u128, error: bool);
 }
 
-pub fn init_dao(sys: &System) {
-    sys.init_logger();
-    let dao = Program::current(sys);
-    let res = dao.send(
-        MEMBERS[0],
-        InitDao {
-            approved_token_program_id: 1.into(),
-            period_duration: 10000000,
-            grace_period_length: 10000000,
-            voting_period_length: 100000000,
-        },
-    );
-    assert!(res.log().is_empty());
-}
+impl Dao for Program<'_> {
+    fn dao(system: &System) -> Program {
+        let dao = Program::current(system);
+        assert!(!dao
+            .send(
+                ADMIN,
+                InitDao {
+                    approved_token_program_id: TOKEN_ID.into(),
+                    period_duration: PERIOD_DURATION,
+                    voting_period_length: VOTING_PERIOD_LENGTH,
+                    grace_period_length: GRACE_PERIOD_LENGTH,
+                },
+            )
+            .main_failed());
+        dao
+    }
 
-pub fn deposit(dao: &Program, member: u64, amount: u128) -> RunResult {
-    dao.send(member, DaoAction::Deposit { amount })
-}
+    fn deposit(&self, from: u64, amount: u128, share: u128, error: bool) {
+        let res = self.send(from, DaoAction::Deposit { amount });
+        let reply = DaoEvent::Deposit {
+            member: from.into(),
+            share,
+        }
+        .encode();
+        if error {
+            assert!(res.main_failed());
+        } else {
+            assert!(res.contains(&(from, reply)));
+        }
+    }
 
-pub fn proposal(dao: &Program, member: u64, applicant: u64, amount: u128) -> RunResult {
-    dao.send(
-        member,
-        DaoAction::SubmitFundingProposal {
-            applicant: applicant.into(),
+    fn submit_funding_proposal(
+        &self,
+        from: u64,
+        proposal_id: u128,
+        receiver: u64,
+        amount: u128,
+        quorum: u128,
+        error: bool,
+    ) {
+        let res = self.send(
+            from,
+            DaoAction::SubmitFundingProposal {
+                receiver: receiver.into(),
+                amount,
+                quorum,
+                details: String::from(""),
+            },
+        );
+        let reply = DaoEvent::SubmitFundingProposal {
+            proposer: from.into(),
+            receiver: receiver.into(),
+            proposal_id,
             amount,
-            quorum: 80,
-            details: "Funding proposal".to_string(),
-        },
-    )
+        }
+        .encode();
+        if error {
+            assert!(res.main_failed());
+        } else {
+            assert!(res.contains(&(from, reply)));
+        }
+    }
+
+    fn process_proposal(&self, proposal_id: u128, passed: bool, error: bool) {
+        let res = self.send(ADMIN, DaoAction::ProcessProposal { proposal_id });
+        let reply = DaoEvent::ProcessProposal {
+            proposal_id,
+            passed,
+        }
+        .encode();
+        if error {
+            assert!(res.main_failed());
+        } else {
+            assert!(res.contains(&(ADMIN, reply)));
+        }
+    }
+    fn submit_vote(&self, from: u64, proposal_id: u128, vote: Vote, error: bool) {
+        let res = self.send(
+            from,
+            DaoAction::SubmitVote {
+                proposal_id,
+                vote: vote.clone(),
+            },
+        );
+        let reply = DaoEvent::SubmitVote {
+            account: from.into(),
+            proposal_id,
+            vote,
+        }
+        .encode();
+        if error {
+            assert!(res.main_failed());
+        } else {
+            assert!(res.contains(&(from, reply)));
+        }
+    }
+    fn ragequit(&self, from: u64, amount: u128, funds: u128, error: bool) {
+        let res = self.send(from, DaoAction::RageQuit { amount });
+        let reply = DaoEvent::RageQuit {
+            member: from.into(),
+            amount: funds,
+        }
+        .encode();
+        if error {
+            assert!(res.main_failed());
+        } else {
+            assert!(res.contains(&(from, reply)));
+        }
+    }
 }
 
-pub fn vote(dao: &Program, member: u64, proposal_id: u128, vote: Vote) -> RunResult {
-    dao.send(member, DaoAction::SubmitVote { proposal_id, vote })
+pub trait FToken {
+    fn ftoken(system: &System) -> Program;
+    fn mint(&self, transaction_id: u64, from: u64, account: u64, amount: u128);
+    fn check_balance(&self, account: u64, expected_amount: u128);
+    fn approve(&self, transaction_id: u64, from: u64, approved_account: u64, amount: u128);
+    fn send_message_and_check_res(&self, from: u64, payload: FTokenAction);
 }
 
-pub fn process(dao: &Program, member: u64, proposal_id: u128) -> RunResult {
-    dao.send(member, DaoAction::ProcessProposal { proposal_id })
-}
+impl FToken for Program<'_> {
+    fn ftoken(system: &System) -> Program {
+        let ftoken = Program::from_file(system, "./target/ft_main.wasm");
+        let storage_code_hash: [u8; 32] = system.submit_code("./target/ft_storage.opt.wasm").into();
 
-pub fn ragequit(dao: &Program, member: u64, amount: u128) -> RunResult {
-    dao.send(member, DaoAction::RageQuit { amount })
+        let ft_logic_code_hash: [u8; 32] = system.submit_code("./target/ft_logic.opt.wasm").into();
+
+        let res = ftoken.send(
+            100,
+            InitFToken {
+                storage_code_hash: storage_code_hash.into(),
+                ft_logic_code_hash: ft_logic_code_hash.into(),
+            },
+        );
+        assert!(!res.main_failed());
+        ftoken
+    }
+
+    fn mint(&self, transaction_id: u64, from: u64, account: u64, amount: u128) {
+        let payload = Action::Mint {
+            recipient: account.into(),
+            amount,
+        }
+        .encode();
+        self.send_message_and_check_res(
+            from,
+            FTokenAction::Message {
+                transaction_id,
+                payload,
+            },
+        );
+    }
+
+    fn approve(&self, transaction_id: u64, from: u64, approved_account: u64, amount: u128) {
+        let payload = Action::Approve {
+            approved_account: approved_account.into(),
+            amount,
+        }
+        .encode();
+        self.send_message_and_check_res(
+            from,
+            FTokenAction::Message {
+                transaction_id,
+                payload,
+            },
+        );
+    }
+
+    fn check_balance(&self, account: u64, expected_amount: u128) {
+        let res = self.send(100, FTokenAction::GetBalance(account.into()));
+        let reply = FTokenEvent::Balance(expected_amount).encode();
+        assert!(res.contains(&(100, reply)));
+    }
+
+    fn send_message_and_check_res(&self, from: u64, payload: FTokenAction) {
+        let res = self.send(from, payload);
+        assert!(res.contains(&(from, FTokenEvent::Ok.encode())));
+    }
 }
