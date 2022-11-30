@@ -1,13 +1,17 @@
 #![no_std]
-use codec::{Decode, Encode};
-pub use dao_light_io::*;
+
 use gstd::{exec, msg, prelude::*, ActorId, String};
-use scale_info::TypeInfo;
+
+pub mod io;
+use crate::io::*;
+
 pub mod state;
-use state::*;
+use crate::state::*;
+
 pub mod ft_messages;
 pub use ft_messages::*;
-const ZERO_ID: ActorId = ActorId::new([0u8; 32]);
+
+const ZERO_ID: ActorId = ActorId::zero();
 
 #[derive(Debug, Default)]
 struct Dao {

@@ -1,8 +1,4 @@
-#![no_std]
-
-use codec::{Decode, Encode};
-use gstd::{ActorId, String};
-use scale_info::TypeInfo;
+use gstd::{prelude::*, ActorId, String};
 
 #[derive(Debug, Decode, Encode, TypeInfo)]
 pub enum DaoAction {

@@ -1,7 +1,6 @@
-use crate::{Member, Proposal};
-use codec::{Decode, Encode};
 use gstd::{prelude::*, ActorId};
-use scale_info::TypeInfo;
+
+use crate::{Member, Proposal};
 
 #[derive(Debug, Decode, Encode, TypeInfo)]
 pub enum Role {
