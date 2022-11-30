@@ -1,6 +1,8 @@
 use gstd::{prelude::*, ActorId, String};
 
 #[derive(Debug, Decode, Encode, TypeInfo)]
+#[codec(crate = gstd::codec)]
+#[scale_info(crate = gstd::scale_info)]
 pub enum DaoAction {
     Deposit {
         amount: u128,
@@ -24,6 +26,8 @@ pub enum DaoAction {
 }
 
 #[derive(Debug, Encode, Decode, TypeInfo)]
+#[codec(crate = gstd::codec)]
+#[scale_info(crate = gstd::scale_info)]
 pub enum DaoEvent {
     Deposit {
         member: ActorId,
@@ -52,6 +56,8 @@ pub enum DaoEvent {
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo)]
+#[codec(crate = gstd::codec)]
+#[scale_info(crate = gstd::scale_info)]
 pub struct InitDao {
     pub approved_token_program_id: ActorId,
     pub voting_period_length: u64,
@@ -60,6 +66,8 @@ pub struct InitDao {
 }
 
 #[derive(Debug, Encode, Decode, Clone, TypeInfo)]
+#[codec(crate = gstd::codec)]
+#[scale_info(crate = gstd::scale_info)]
 pub enum Vote {
     Yes,
     No,

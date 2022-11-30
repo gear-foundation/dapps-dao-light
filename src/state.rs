@@ -3,6 +3,8 @@ use gstd::{prelude::*, ActorId};
 use crate::{Member, Proposal};
 
 #[derive(Debug, Decode, Encode, TypeInfo)]
+#[codec(crate = gstd::codec)]
+#[scale_info(crate = gstd::scale_info)]
 pub enum Role {
     Admin,
     Member,
@@ -10,6 +12,8 @@ pub enum Role {
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo)]
+#[codec(crate = gstd::codec)]
+#[scale_info(crate = gstd::scale_info)]
 pub enum State {
     UserStatus(ActorId),
     AllProposals,
@@ -21,6 +25,8 @@ pub enum State {
 }
 
 #[derive(Debug, Encode, Decode, TypeInfo)]
+#[codec(crate = gstd::codec)]
+#[scale_info(crate = gstd::scale_info)]
 pub enum StateReply {
     UserStatus(Role),
     AllProposals(BTreeMap<u128, Proposal>),
