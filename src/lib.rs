@@ -42,7 +42,7 @@ pub struct Proposal {
     pub details: String,
     pub starting_period: u64,
     pub ended_at: u64,
-    pub votes_by_member: BTreeMap<ActorId, Vote>,
+    pub votes_by_member: Vec<(ActorId, Vote)>,
 }
 
 #[derive(Debug, Clone, Encode, Decode, TypeInfo)]
@@ -177,7 +177,11 @@ impl Dao {
                 if exec::block_timestamp() < proposal.starting_period {
                     panic!("voting period has not started");
                 }
-                if proposal.votes_by_member.contains_key(&msg::source()) {
+                if proposal
+                    .votes_by_member
+                    .iter()
+                    .any(|(actor, _vote)| msg::source().eq(actor))
+                {
                     panic!("account has already voted on that proposal");
                 }
                 proposal
@@ -205,7 +209,7 @@ impl Dao {
                 proposal.no_votes = proposal.no_votes.saturating_add(member.shares);
             }
         }
-        proposal.votes_by_member.insert(msg::source(), vote.clone());
+        proposal.votes_by_member.push((msg::source(), vote.clone()));
 
         msg::reply(
             DaoEvent::SubmitVote {
