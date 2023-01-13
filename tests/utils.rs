@@ -1,6 +1,7 @@
-use dao_light::io::*;
+use dao_light_io::*;
 use ft_io::*;
 use gtest::{Program, RunResult, System};
+
 pub const MEMBERS: &[u64] = &[3, 4, 5, 6];
 pub const ZERO_ID: u64 = 0;
 
