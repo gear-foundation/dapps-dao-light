@@ -7,7 +7,7 @@ pub const ZERO_ID: u64 = 0;
 
 pub fn init_fungible_token(sys: &System) {
     sys.init_logger();
-    let ft = Program::from_file(sys, "./target/fungible_token-0.1.3.wasm");
+    let ft = Program::from_file(sys, "./target/ft.wasm");
 
     let res = ft.send(
         MEMBERS[0],
