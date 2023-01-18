@@ -4,14 +4,10 @@ all: init build test
 
 build:
 	@echo ⚙️ Building a release...
-	@cargo +nightly b -r
+	@cargo +nightly b -r --workspace
 	@ls -l target/wasm32-unknown-unknown/release/*.wasm
 
 fmt:
-	@echo ⚙️ Formatting...
-	@cargo fmt --all
-
-fmt-check:
 	@echo ⚙️ Checking a format...
 	@cargo fmt --all --check
 
@@ -22,7 +18,7 @@ init:
 
 lint:
 	@echo ⚙️ Running the linter...
-	@cargo +nightly clippy --all-targets -- -D warnings
+	@cargo +nightly clippy --workspace -- -D warnings
 
 pre-commit: fmt lint full-test
 

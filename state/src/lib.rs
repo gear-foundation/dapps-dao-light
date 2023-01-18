@@ -9,17 +9,19 @@ pub trait Metawasm {
     type State = <DaoLightMetadata as Metadata>::State;
 
     fn user_status(account: ActorId, state: Self::State) -> Role {
-        let role = if state.is_member(&account) {
+        if state.is_member(&account) {
             Role::Member
         } else {
             Role::None
-        };
-
-        role
+        }
     }
 
     fn all_proposals(state: Self::State) -> Vec<Proposal> {
-        state.proposals
+        state
+            .proposals
+            .iter()
+            .map(|(_, proposal)| proposal.clone())
+            .collect()
     }
 
     fn is_member(account: ActorId, state: Self::State) -> bool {
@@ -34,7 +36,7 @@ pub trait Metawasm {
         let (_, proposal) = state
             .proposals
             .iter()
-            .find(|(id, _)| proposal_id == &id)
+            .find(|(id, _)| proposal_id == *id)
             .expect("Invalid proposal id");
         proposal.clone()
     }
@@ -43,7 +45,7 @@ pub trait Metawasm {
         let (_, member) = state
             .members
             .iter()
-            .find(|(id, _)| account == &id)
+            .find(|(id, _)| account == *id)
             .expect("Invalid account");
 
         member.clone()
@@ -53,7 +55,7 @@ pub trait Metawasm {
         let (_, member) = state
             .members
             .iter()
-            .find(|(id, _)| account == &id)
+            .find(|(id, _)| account == *id)
             .expect("Invalid account");
 
         member.shares
