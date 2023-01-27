@@ -407,6 +407,6 @@ extern "C" fn state() {
 
 #[no_mangle]
 extern "C" fn metahash() {
-    msg::reply(include!("../.metahash"), 0)
+    msg::reply::<[u8; 32]>(include!("../.metahash"), 0)
         .expect("Failed to encode or reply with `[u8; 32]` from `metahash()`");
 }

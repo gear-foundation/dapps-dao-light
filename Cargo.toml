@@ -6,21 +6,18 @@ authors = ["Gear Technologies"]
 license = "MIT"
 
 [dependencies]
-# TODO: pin to the "stable" branch before the merge.
-gstd = { git = "https://github.com/gear-tech/gear.git" }
+gstd = { git = "https://github.com/gear-tech/gear.git", branch = "stable" }
 dao-light-io = { path = "io" }
-ft-io = { git = "https://github.com/gear-dapps/fungible-token.git", branch = "new_meta" }
+ft-io = { git = "https://github.com/gear-dapps/fungible-token.git" }
 hashbrown = "0.13.1"
 
 [dev-dependencies]
-# TODO: pin to the "stable" branch before the merge.
-gstd = { git = "https://github.com/gear-tech/gear.git", features = ["debug"] }
-gtest = { git = "https://github.com/gear-tech/gear.git" }
+gstd = { git = "https://github.com/gear-tech/gear.git", branch = "stable", features = ["debug"] }
+gtest = { git = "https://github.com/gear-tech/gear.git", branch = "stable" }
 
 [build-dependencies]
-# TODO: pin to the "stable" branch before the merge.
 dao-light-io = { path = "io" }
-gear-wasm-builder = { git = "https://github.com/gear-tech/gear.git" }
+gear-wasm-builder = { git = "https://github.com/gear-tech/gear.git", branch = "stable" }
 
 [features]
 # Used for inserting constants with WASM binaries (NOT paths) of the contract in
