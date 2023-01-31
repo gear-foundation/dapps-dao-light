@@ -3,8 +3,6 @@ use dao_light_io::*;
 use gstd::{exec, msg, prelude::*, ActorId, String};
 use hashbrown::HashMap;
 
-const ZERO_ID: ActorId = ActorId::zero();
-
 #[derive(Debug, Default)]
 struct Dao {
     approved_token_program_id: ActorId,
@@ -20,24 +18,19 @@ struct Dao {
 
 impl From<&Dao> for DaoState {
     fn from(dao: &Dao) -> Self {
+        let members = dao.members.clone().into_iter().collect();
+        let proposals = dao.proposals.clone().into_iter().collect();
+
         DaoState {
             approved_token_program_id: dao.approved_token_program_id,
             period_duration: dao.period_duration,
             voting_period_length: dao.voting_period_length,
             grace_period_length: dao.grace_period_length,
             total_shares: dao.total_shares,
-            members: dao
-                .members
-                .iter()
-                .map(|(key, value)| (*key, value.clone()))
-                .collect(),
+            members,
             proposal_id: dao.proposal_id,
             locked_funds: dao.locked_funds,
-            proposals: dao
-                .proposals
-                .iter()
-                .map(|(key, value)| (*key, value.clone()))
-                .collect(),
+            proposals,
         }
     }
 }
@@ -95,7 +88,7 @@ impl Dao {
     ) {
         self.check_for_membership();
 
-        if applicant == &ZERO_ID {
+        if applicant.is_zero() {
             panic!("Proposal for the zero address");
         }
 
@@ -109,11 +102,7 @@ impl Dao {
         // compute startingPeriod for proposal
         // there should be a minimum time interval between proposals (period_duration) so that members have time to ragequit
         if self.proposal_id > 0 {
-            let previous_starting_period = self
-                .proposals
-                .get(&(&self.proposal_id - 1))
-                .unwrap()
-                .starting_period;
+            let previous_starting_period = self.proposals[&(self.proposal_id - 1)].starting_period;
             if starting_period < previous_starting_period + self.period_duration {
                 starting_period = previous_starting_period + self.period_duration;
             }
@@ -127,7 +116,7 @@ impl Dao {
             details,
             starting_period,
             ended_at: starting_period + self.voting_period_length,
-            ..Proposal::default()
+            ..Default::default()
         };
 
         self.proposals.insert(self.proposal_id, proposal);
@@ -186,13 +175,8 @@ impl Dao {
             Vote::Yes => {
                 proposal.yes_votes = proposal.yes_votes.saturating_add(member.shares);
                 // it is necessary to save the highest id of the proposal - must be processed for member to ragequit
-                if let Some(id) = member.highest_index_yes_vote {
-                    if id < proposal_id {
-                        member.highest_index_yes_vote = Some(proposal_id);
-                    }
-                } else {
-                    member.highest_index_yes_vote = Some(proposal_id);
-                }
+                let id = member.highest_index_yes_vote.get_or_insert(proposal_id);
+                *id = proposal_id.max(*id);
             }
             Vote::No => {
                 proposal.no_votes = proposal.no_votes.saturating_add(member.shares);
@@ -332,17 +316,7 @@ impl Dao {
 
     // checks that account is DAO member
     fn is_member(&self, account: &ActorId) -> bool {
-        match self.members.get(account) {
-            Some(member) => {
-                if member.shares == 0 {
-                    return false;
-                }
-            }
-            None => {
-                return false;
-            }
-        }
-        true
+        matches!(self.members.get(account), Some(member) if member.shares > 0)
     }
 
     // check that `msg::source()` is either a DAO member or a delegate key
@@ -354,7 +328,7 @@ impl Dao {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn init() {
+extern "C" fn init() {
     let config: InitDao = msg::load().expect("Unable to decode InitDao");
     let dao = Dao {
         approved_token_program_id: config.approved_token_program_id,
@@ -362,11 +336,11 @@ pub unsafe extern "C" fn init() {
         period_duration: config.period_duration,
         ..Dao::default()
     };
-    DAO = Some(dao);
+    unsafe { DAO = Some(dao) };
 }
 
 #[gstd::async_main]
-async unsafe fn main() {
+async fn main() {
     let action: DaoAction = msg::load().expect("Could not load Action");
     let dao: &mut Dao = unsafe { DAO.get_or_insert(Dao::default()) };
     match action {
