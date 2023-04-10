@@ -22,20 +22,26 @@ lint:
 
 pre-commit: fmt lint full-test
 
-deps:
-	@echo ⚙️ Downloading dependencies...
-	@path=target/ft.wasm;\
-	mkdir -p target && \
-	if [ ! -f $$path ]; then\
-	    curl -L\
-	        https://github.com/gear-dapps/fungible-token/releases/download/0.1.4/fungible_token-0.1.4.wasm\
-			-o $$path;\
-	fi
-
-test: deps
+test: 
 	@echo ⚙️ Running unit tests...
-	@cargo +nightly t
-
+	@if [ ! -f "./target/ft_main.wasm" ]; then\
+	    curl -L\
+	        "https://github.com/gear-dapps/sharded-fungible-token/releases/download/2.0.0/ft_main-2.0.0.opt.wasm"\
+	        -o "./target/ft_main.wasm";\
+	fi
+	@if [ ! -f "./target/ft_logic.opt.wasm" ]; then\
+	    curl -L\
+	        "https://github.com/gear-dapps/sharded-fungible-token/releases/download/2.0.0/ft_logic-2.0.0.opt.wasm"\
+	        -o "./target/ft_logic.opt.wasm";\
+	fi
+	@if [ ! -f "./target/ft_storage.opt.wasm" ]; then\
+	    curl -L\
+	        "https://github.com/gear-dapps/sharded-fungible-token/releases/download/2.0.0/ft_storage-2.0.0.opt.wasm"\
+	        -o "./target/ft_storage.opt.wasm";\
+	fi
+	@echo ──────────── Run tests ────────────────────────
+	@cargo +nightly test --release
+	
 full-test: deps
 	@echo ⚙️ Running all tests...
 	@cargo +nightly t -- --include-ignored

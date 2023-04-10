@@ -8,7 +8,7 @@ license = "MIT"
 [dependencies]
 gstd = { git = "https://github.com/gear-tech/gear.git", branch = "testnet" }
 dao-light-io = { path = "io" }
-ft-io = { git = "https://github.com/gear-dapps/fungible-token.git", tag = "0.1.4" }
+ft-main-io = { git = "https://github.com/gear-dapps/sharded-fungible-token.git", tag = "2.0.0" }
 hashbrown = "0.13.2"
 
 [dev-dependencies]

@@ -4,22 +4,26 @@ use gstd::{exec, msg, prelude::*, ActorId, String};
 use hashbrown::HashMap;
 
 #[derive(Debug, Default)]
-struct Dao {
-    approved_token_program_id: ActorId,
-    period_duration: u64,
-    voting_period_length: u64,
-    grace_period_length: u64,
-    total_shares: u128,
-    members: HashMap<ActorId, Member>,
-    proposal_id: u128,
-    locked_funds: u128,
-    proposals: HashMap<u128, Proposal>,
+pub struct Dao {
+    pub approved_token_program_id: ActorId,
+    pub period_duration: u64,
+    pub voting_period_length: u64,
+    pub grace_period_length: u64,
+    pub total_shares: u128,
+    pub members: HashMap<ActorId, Member>,
+    pub proposal_id: u128,
+    pub locked_funds: u128,
+    pub proposals: HashMap<u128, Proposal>,
+    pub balance: u128,
+    pub transaction_id: u64,
+    pub transactions: HashMap<u64, Option<DaoAction>>,
 }
 
 impl From<&Dao> for DaoState {
     fn from(dao: &Dao) -> Self {
         let members = dao.members.clone().into_iter().collect();
         let proposals = dao.proposals.clone().into_iter().collect();
+        let transactions = dao.transactions.clone().into_iter().collect();
 
         DaoState {
             approved_token_program_id: dao.approved_token_program_id,
@@ -31,6 +35,9 @@ impl From<&Dao> for DaoState {
             proposal_id: dao.proposal_id,
             locked_funds: dao.locked_funds,
             proposals,
+            balance: dao.balance,
+            transaction_id: dao.transaction_id,
+            transactions,
         }
     }
 }
@@ -38,27 +45,35 @@ impl From<&Dao> for DaoState {
 static mut DAO: Option<Dao> = None;
 
 impl Dao {
-    /// Deposits tokens to DAO
-    /// Arguments:
-    /// * `amount`: the number of fungible tokens that user wants to deposit to DAO
-    async fn deposit(&mut self, amount: u128) {
-        let share = self.calculate_share(amount).await;
-        transfer_tokens(
+    async fn deposit(&mut self, transaction_id: Option<u64>, amount: u128) {
+        let current_transaction_id = self.get_transaction_id(transaction_id);
+        if transfer_tokens(
+            current_transaction_id,
             &self.approved_token_program_id,
             &msg::source(),
             &exec::program_id(),
             amount,
         )
-        .await;
+        .await
+        .is_err()
+        {
+            self.transactions.remove(&current_transaction_id);
+            msg::reply(DaoEvent::TransactionFailed(current_transaction_id), 0)
+                .expect("Error in a reply `DaoEvent::TransactionFailed`");
+            return;
+        };
+        let share = self.calculate_share(amount);
         self.members
             .entry(msg::source())
-            .and_modify(|member| member.shares += share)
+            .and_modify(|member| member.shares = member.shares.saturating_add(share))
             .or_insert(Member {
                 shares: share,
                 highest_index_yes_vote: None,
             });
 
         self.total_shares = self.total_shares.saturating_add(share);
+        self.balance = self.balance.saturating_add(amount);
+        self.transactions.remove(&current_transaction_id);
         msg::reply(
             DaoEvent::Deposit {
                 member: msg::source(),
@@ -66,43 +81,37 @@ impl Dao {
             },
             0,
         )
-        .unwrap();
+        .expect("Error in a reply `DaoEvent::Deposit`");
     }
 
-    /// The proposal of funding
-    /// Requirements:
-    /// * The proposal can be submitted only by the existing members or their delegate addresses
-    /// * The receiver ID can't be the zero
-    /// * The DAO must have enough funds to finance the proposal
-    /// Arguments:
-    /// * `receiver`: an actor that will be funded
-    /// * `amount`: the number of fungible tokens that will be sent to the receiver
-    /// * `quorum`: a certain threshold of YES votes in order for the proposal to pass
-    /// * `details`: the proposal description
-    async fn submit_funding_proposal(
+    fn submit_funding_proposal(
         &mut self,
-        applicant: &ActorId,
+        receiver: &ActorId,
         amount: u128,
         quorum: u128,
         details: String,
     ) {
-        self.check_for_membership();
+        self.check_for_membership(&msg::source());
 
-        if applicant.is_zero() {
+        if receiver.is_zero() {
             panic!("Proposal for the zero address");
         }
 
         // check that DAO has sufficient funds
-        let balance = balance(&self.approved_token_program_id, &exec::program_id()).await;
-        if balance.saturating_sub(self.locked_funds) < amount {
+        if self.balance.saturating_sub(self.locked_funds) < amount {
             panic!("Not enough funds in DAO");
         }
 
         let mut starting_period = exec::block_timestamp();
+        let proposal_id = self.proposal_id;
         // compute startingPeriod for proposal
         // there should be a minimum time interval between proposals (period_duration) so that members have time to ragequit
-        if self.proposal_id > 0 {
-            let previous_starting_period = self.proposals[&(self.proposal_id - 1)].starting_period;
+        if proposal_id > 0 {
+            let previous_starting_period = self
+                .proposals
+                .get(&(&proposal_id - 1))
+                .expect("Cant be None")
+                .starting_period;
             if starting_period < previous_starting_period + self.period_duration {
                 starting_period = previous_starting_period + self.period_duration;
             }
@@ -110,41 +119,36 @@ impl Dao {
 
         let proposal = Proposal {
             proposer: msg::source(),
-            applicant: *applicant,
+            receiver: *receiver,
             quorum,
             amount,
             details,
             starting_period,
             ended_at: starting_period + self.voting_period_length,
-            ..Default::default()
+            ..Proposal::default()
         };
 
-        self.proposals.insert(self.proposal_id, proposal);
+        self.proposals.insert(proposal_id, proposal);
+        self.proposal_id = self.proposal_id.saturating_add(1);
+        self.locked_funds = self.locked_funds.saturating_add(amount);
 
         msg::reply(
             DaoEvent::SubmitFundingProposal {
                 proposer: msg::source(),
-                applicant: *applicant,
-                proposal_id: self.proposal_id,
+                receiver: *receiver,
+                proposal_id,
                 amount,
             },
             0,
         )
-        .unwrap();
-        self.proposal_id = self.proposal_id.saturating_add(1);
-        self.locked_funds = self.locked_funds.saturating_add(amount);
+        .expect("Error in a reply `DaoEvent::SubmitFundingProposal`");
     }
 
-    /// The member submit his vote (YES or NO) on the proposal
-    /// Requirements:
-    /// * The proposal can be submitted only by the existing members or their delegate addresses
-    /// * The member can vote on the proposal only once
-    /// * Proposal must exist, the voting period must has started and not expired
-    /// Arguments:
-    /// * `proposal_id`: the proposal ID
-    /// * `vote`: the member  a member vote (YES or NO)
     fn submit_vote(&mut self, proposal_id: u128, vote: Vote) {
-        self.check_for_membership();
+        let member = self
+            .members
+            .get_mut(&msg::source())
+            .expect("Account is not a member");
 
         // checks that proposal exists, the voting period has started, not expired and that member did not vote on the proposal
         let proposal = match self.proposals.get_mut(&proposal_id) {
@@ -169,14 +173,17 @@ impl Dao {
             }
         };
 
-        let member = self.members.get_mut(&msg::source()).unwrap();
-
         match vote {
             Vote::Yes => {
                 proposal.yes_votes = proposal.yes_votes.saturating_add(member.shares);
                 // it is necessary to save the highest id of the proposal - must be processed for member to ragequit
-                let id = member.highest_index_yes_vote.get_or_insert(proposal_id);
-                *id = proposal_id.max(*id);
+                if let Some(id) = member.highest_index_yes_vote {
+                    if id < proposal_id {
+                        member.highest_index_yes_vote = Some(proposal_id);
+                    }
+                } else {
+                    member.highest_index_yes_vote = Some(proposal_id);
+                }
             }
             Vote::No => {
                 proposal.no_votes = proposal.no_votes.saturating_add(member.shares);
@@ -192,19 +199,18 @@ impl Dao {
             },
             0,
         )
-        .unwrap();
+        .expect("Error in a reply `DaoEvent::SubmitVote`");
     }
 
-    /// The proposal processing after the proposal completes during the grace period.
-    /// If the proposal is accepted, the indicated amount of tokens are sent to the applicant.
-    /// Requirements:
-    /// * The previous proposal must be processed
-    /// * The proposal must exist and be ready for processing
-    /// * The proposal must not be already be processed
-    /// Arguments:
-    /// * `proposal_id`: the proposal ID
-    async fn process_proposal(&mut self, proposal_id: u128) {
-        if proposal_id > 0 && !self.proposals.get(&(&proposal_id - 1)).unwrap().processed {
+    async fn process_proposal(&mut self, transaction_id: Option<u64>, proposal_id: u128) {
+        let current_transaction_id = self.get_transaction_id(transaction_id);
+        if proposal_id > 0
+            && !self
+                .proposals
+                .get(&(&proposal_id - 1))
+                .expect("Cant be None")
+                .processed
+        {
             panic!("Previous proposal must be processed");
         }
         let proposal = match self.proposals.get_mut(&proposal_id) {
@@ -226,49 +232,47 @@ impl Dao {
             }
         };
 
-        proposal.processed = true;
-        proposal.did_pass = proposal.yes_votes > proposal.no_votes
+        proposal.passed = proposal.yes_votes > proposal.no_votes
             && proposal.yes_votes * 10_000 / self.total_shares >= proposal.quorum * 100;
 
         // if funding propoposal has passed
-        if proposal.did_pass {
-            transfer_tokens(
+        if proposal.passed
+            && transfer_tokens(
+                current_transaction_id,
                 &self.approved_token_program_id,
                 &exec::program_id(),
-                &proposal.applicant,
+                &proposal.receiver,
                 proposal.amount,
             )
-            .await;
-        }
+            .await
+            .is_err()
+        {
+            msg::reply(DaoEvent::TransactionFailed(current_transaction_id), 0)
+                .expect("Error in a reply `DaoEvent::TransactionFailed`");
+            return;
+        };
+
         self.locked_funds = self.locked_funds.saturating_sub(proposal.amount);
+        self.balance = self.balance.saturating_sub(proposal.amount);
+        self.transactions.remove(&current_transaction_id);
+        proposal.processed = true;
         msg::reply(
             DaoEvent::ProcessProposal {
-                applicant: proposal.applicant,
                 proposal_id,
-                did_pass: proposal.did_pass,
+                passed: proposal.passed,
             },
             0,
         )
-        .unwrap();
-        let balance = balance(&self.approved_token_program_id, &exec::program_id()).await;
-        if balance == 0 {
-            self.total_shares = 0;
-            self.members = HashMap::new();
-        }
+        .expect("Error in a reply `DaoEvent::ProcessProposal`");
     }
 
-    /// Withdraws the capital of the member
-    /// Requirements:
-    /// * `msg::source()` must be DAO member
-    /// * The member must have sufficient amount of shares
-    /// * The latest proposal the member voted YES must be processed
-    /// Arguments:
-    /// * `amount`: The amount of shares the member would like to withdraw
-    async fn ragequit(&mut self, amount: u128) {
-        if !self.members.contains_key(&msg::source()) {
-            panic!("account is not a DAO member");
-        }
-        let member = self.members.get_mut(&msg::source()).unwrap();
+    async fn ragequit(&mut self, transaction_id: Option<u64>, amount: u128) {
+        let current_transaction_id = self.get_transaction_id(transaction_id);
+        let funds = self.redeemable_funds(amount);
+        let member = self
+            .members
+            .get_mut(&msg::source())
+            .expect("Account is not a DAO member");
         if amount > member.shares {
             panic!("unsufficient shares");
         }
@@ -279,16 +283,25 @@ impl Dao {
                 }
             }
         }
-        member.shares = member.shares.saturating_sub(amount);
-        let funds = self.redeemable_funds(amount).await;
-        transfer_tokens(
+
+        if transfer_tokens(
+            current_transaction_id,
             &self.approved_token_program_id,
             &exec::program_id(),
             &msg::source(),
             funds,
         )
-        .await;
+        .await
+        .is_err()
+        {
+            msg::reply(DaoEvent::TransactionFailed(current_transaction_id), 0)
+                .expect("Error in a reply `DaoEvent::TransactionFailed`");
+            return;
+        };
+        member.shares = member.shares.saturating_sub(amount);
+        self.transactions.remove(&current_transaction_id);
         self.total_shares = self.total_shares.saturating_sub(amount);
+        self.balance = self.balance.saturating_sub(funds);
         msg::reply(
             DaoEvent::RageQuit {
                 member: msg::source(),
@@ -296,33 +309,28 @@ impl Dao {
             },
             0,
         )
-        .unwrap();
+        .expect("Error in a reply `DaoEvent::RageQuit`");
     }
 
-    // calculates the funds that the member can redeem based on his shares
-    async fn redeemable_funds(&self, share: u128) -> u128 {
-        let balance = balance(&self.approved_token_program_id, &exec::program_id()).await;
-        (share * balance) / self.total_shares
-    }
-
-    // calculates a share a user can receive for his deposited tokens
-    async fn calculate_share(&self, tokens: u128) -> u128 {
-        let balance = balance(&self.approved_token_program_id, &exec::program_id()).await;
-        if balance == 0 {
-            return tokens;
-        }
-        (self.total_shares * tokens) / balance
-    }
-
-    // checks that account is DAO member
-    fn is_member(&self, account: &ActorId) -> bool {
-        matches!(self.members.get(account), Some(member) if member.shares > 0)
-    }
-
-    // check that `msg::source()` is either a DAO member or a delegate key
-    fn check_for_membership(&self) {
-        if !self.is_member(&msg::source()) {
-            panic!("account is not a DAO member")
+    async fn continue_transaction(&mut self, transaction_id: u64) {
+        let transactions = self.transactions.clone();
+        let payload = &transactions
+            .get(&transaction_id)
+            .expect("Transaction does not exist");
+        if let Some(action) = payload {
+            match action {
+                DaoAction::Deposit { amount } => {
+                    self.deposit(Some(transaction_id), *amount).await;
+                }
+                DaoAction::ProcessProposal { proposal_id } => {
+                    self.process_proposal(Some(transaction_id), *proposal_id)
+                        .await;
+                }
+                DaoAction::RageQuit { amount } => {
+                    self.ragequit(Some(transaction_id), *amount).await;
+                }
+                _ => unreachable!(),
+            }
         }
     }
 }
@@ -344,25 +352,30 @@ async fn main() {
     let action: DaoAction = msg::load().expect("Could not load Action");
     let dao: &mut Dao = unsafe { DAO.get_or_insert(Dao::default()) };
     match action {
-        DaoAction::Deposit { amount } => dao.deposit(amount).await,
+        DaoAction::Deposit { amount } => {
+            dao.transactions.insert(dao.transaction_id, Some(action));
+            dao.deposit(None, amount).await;
+        }
         DaoAction::SubmitFundingProposal {
-            applicant,
+            receiver,
             amount,
             quorum,
             details,
         } => {
-            dao.submit_funding_proposal(&applicant, amount, quorum, details)
-                .await;
+            dao.submit_funding_proposal(&receiver, amount, quorum, details);
         }
         DaoAction::ProcessProposal { proposal_id } => {
-            dao.process_proposal(proposal_id).await;
+            dao.transactions.insert(dao.transaction_id, Some(action));
+            dao.process_proposal(None, proposal_id).await;
         }
         DaoAction::SubmitVote { proposal_id, vote } => {
             dao.submit_vote(proposal_id, vote);
         }
         DaoAction::RageQuit { amount } => {
-            dao.ragequit(amount).await;
+            dao.transactions.insert(dao.transaction_id, Some(action));
+            dao.ragequit(None, amount).await;
         }
+        DaoAction::Continue(transaction_id) => dao.continue_transaction(transaction_id).await,
     }
 }
 
