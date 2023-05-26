@@ -13,8 +13,7 @@ fmt:
 
 init:
 	@echo ⚙️ Installing a toolchain \& a target...
-	@rustup toolchain install nightly --component clippy --component rustfmt
-	@rustup target add wasm32-unknown-unknown --toolchain nightly
+	@rustup show
 
 lint:
 	@echo ⚙️ Running the linter...
@@ -28,7 +27,7 @@ deps:
 	mkdir -p target && \
 	if [ ! -f $$path ]; then\
 	    curl -L\
-	        https://github.com/gear-dapps/fungible-token/releases/download/0.1.5/fungible_token.wasm\
+	        https://github.com/gear-dapps/fungible-token/releases/download/0.1.6/fungible_token.wasm\
 			-o $$path;\
 	fi
 

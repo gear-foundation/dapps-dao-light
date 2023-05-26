@@ -43,8 +43,8 @@ license = "MIT"
 gstd = { git = "https://github.com/gear-tech/gear", rev = "78dfa07" }
 dao-light-io = { path = "io" }
 dao-light-state = { path = "state" }
-ft-io = { git = "https://github.com/gear-dapps/fungible-token.git", tag = "0.1.5" }
-hashbrown = "0.13.2"
+ft-io = { git = "https://github.com/gear-dapps/fungible-token.git", tag = "0.1.6" }
+hashbrown = "0.13"
 gmeta = { git = "https://github.com/gear-tech/gear", rev = "78dfa07" }
 gtest = { git = "https://github.com/gear-tech/gear", rev = "78dfa07" }
 gclient = { git = "https://github.com/gear-tech/gear", rev = "78dfa07" }
