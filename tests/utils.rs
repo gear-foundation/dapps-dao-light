@@ -48,7 +48,13 @@ pub fn deposit(dao: &Program, member: u64, amount: u128) -> RunResult {
 }
 
 pub fn approve(ft: &Program, member: u64, to: u64, amount: u128) -> RunResult {
-    ft.send(member, FTAction::Approve { to: to.into(), amount })
+    ft.send(
+        member,
+        FTAction::Approve {
+            to: to.into(),
+            amount,
+        },
+    )
 }
 
 pub fn proposal(dao: &Program, member: u64, applicant: u64, amount: u128) -> RunResult {

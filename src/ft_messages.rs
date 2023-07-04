@@ -50,7 +50,6 @@ pub async fn balance(token_id: &ActorId, account: &ActorId) -> u128 {
         .expect("Error in balance");
 
     if let FTEvent::Balance(balance_response) = balance_response {
-        gstd::debug!("BALANCE RECEIVED: {balance_response}");
         balance_response
     } else {
         0

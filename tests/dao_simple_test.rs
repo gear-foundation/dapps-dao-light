@@ -250,8 +250,10 @@ fn ragequit_dao() {
     init_fungible_token(&sys);
     init_dao(&sys);
 
+    let ft = sys.get_program(1);
     let dao = sys.get_program(2);
 
+    assert!(!approve(&ft, MEMBERS[1], 2, 1000).main_failed());
     assert!(!deposit(&dao, MEMBERS[1], 1000).main_failed());
 
     let res = ragequit(&dao, MEMBERS[1], 800);
@@ -263,6 +265,11 @@ fn ragequit_dao() {
         }
         .encode()
     )));
+
+    assert!(!approve(&ft, MEMBERS[0], 2, 1000).main_failed());
+    assert!(!approve(&ft, MEMBERS[1], 2, 1000).main_failed());
+    assert!(!approve(&ft, MEMBERS[2], 2, 1000).main_failed());
+    assert!(!approve(&ft, MEMBERS[3], 2, 1000).main_failed());
 
     assert!(!deposit(&dao, MEMBERS[0], 1000).main_failed());
     assert!(!deposit(&dao, MEMBERS[1], 1000).main_failed());
@@ -299,8 +306,10 @@ fn ragequit_failures() {
     init_fungible_token(&sys);
     init_dao(&sys);
 
+    let ft = sys.get_program(1);
     let dao = sys.get_program(2);
 
+    assert!(!approve(&ft, MEMBERS[0], 2, 1000).main_failed());
     assert!(!deposit(&dao, MEMBERS[0], 1000).main_failed());
     // must fail since the account is not a DAO member
     assert!(ragequit(&dao, MEMBERS[1], 800).main_failed());

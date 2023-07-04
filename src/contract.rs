@@ -241,6 +241,11 @@ impl Dao {
             .await;
         }
         self.locked_funds = self.locked_funds.saturating_sub(proposal.amount);
+        let balance = balance(&self.approved_token_program_id, &exec::program_id()).await;
+        if balance == 0 {
+            self.total_shares = 0;
+            self.members = HashMap::new();
+        }
         msg::reply(
             DaoEvent::ProcessProposal {
                 applicant: proposal.applicant,
@@ -250,12 +255,6 @@ impl Dao {
             0,
         )
         .unwrap();
-        let balance = balance(&self.approved_token_program_id, &exec::program_id()).await;
-        gstd::debug!("BALANCE RECEIVED 2: {balance}");
-        if balance == 0 {
-            self.total_shares = 0;
-            self.members = HashMap::new();
-        }
     }
 
     /// Withdraws the capital of the member
