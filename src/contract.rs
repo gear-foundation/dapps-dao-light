@@ -251,6 +251,7 @@ impl Dao {
         )
         .unwrap();
         let balance = balance(&self.approved_token_program_id, &exec::program_id()).await;
+        gstd::debug!("BALANCE RECEIVED 2: {balance}");
         if balance == 0 {
             self.total_shares = 0;
             self.members = HashMap::new();
@@ -377,10 +378,4 @@ extern "C" fn state() {
         0,
     )
     .expect("Failed to encode or reply with `<AppMetadata as Metadata>::State` from `state()`");
-}
-
-#[no_mangle]
-extern "C" fn metahash() {
-    msg::reply::<[u8; 32]>(include!("../.metahash"), 0)
-        .expect("Failed to encode or reply with `[u8; 32]` from `metahash()`");
 }
