@@ -39,8 +39,8 @@ gmeta = { git = "https://github.com/gear-tech/gear", rev = "946ac47" }
 gtest = { git = "https://github.com/gear-tech/gear", rev = "946ac47" }
 gclient = { git = "https://github.com/gear-tech/gear", rev = "946ac47" }
 gear-wasm-builder = { git = "https://github.com/gear-tech/gear", rev = "946ac47" }
-ft-io = { git = "https://github.com/gear-dapps/fungible-token", branch = "update-deps" }
-fungible-token = { git = "https://github.com/gear-dapps/fungible-token", branch = "update-deps" }
+ft-io = { git = "https://github.com/gear-dapps/fungible-token", tag = "0.1.8" }
+fungible-token = { git = "https://github.com/gear-dapps/fungible-token", tag = "0.1.8" }
 dao-light-io = { path = "io" }
 dao-light-state = { path = "state" }
 hashbrown = "0.14"
